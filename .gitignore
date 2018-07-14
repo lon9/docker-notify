@@ -16,3 +16,4 @@
 docker-notify
 example/example
 vendor
+docker-notify.env

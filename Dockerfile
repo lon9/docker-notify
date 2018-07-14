@@ -8,4 +8,5 @@ RUN go build -o /usr/bin/docker-notify
 
 FROM alpine
 WORKDIR /app
+RUN apk add --no-cache ca-certificates
 COPY --from=go-build-env /usr/bin/docker-notify .

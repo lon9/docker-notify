@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -21,6 +22,14 @@ const (
 	Start = "start"
 	// Die is identifier of die event
 	Die = "die"
+	// SlackURLEnv is key of SLACK_URL
+	SlackURLEnv = "SLACK_URL"
+	// DiscordURLEnv is key of DISCORD_URL
+	DiscordURLEnv = "DISCORD_URL"
+	// StartColor is color for started message
+	StartColor = "#9ccc65"
+	// DieColor is color for died message
+	DieColor = "#c62828"
 )
 
 // Config is struct of config
@@ -30,24 +39,32 @@ type Config struct {
 }
 
 // NewConfig is constructor
-func NewConfig() *Config {
-	return &Config{
-		SlackURL:   os.Getenv("SLACK_URL"),
-		DiscordURL: os.Getenv("DISCORD_URL"),
+func NewConfig() (*Config, error) {
+	slackURL := os.Getenv(SlackURLEnv)
+	discordURL := os.Getenv(DiscordURLEnv)
+	if slackURL == "" && discordURL == "" {
+		return nil, fmt.Errorf("%s and/or %s must be set", SlackURLEnv, DiscordURLEnv)
 	}
+	return &Config{
+		SlackURL:   slackURL,
+		DiscordURL: discordURL,
+	}, nil
 }
 
 func main() {
 
 	apiVersion := os.Getenv("API_VERSION")
 	if apiVersion == "" {
-		log.Fatal("API_VERSION must be set")
+		log.Fatal("API_VERSION must be set as your docker api version")
+	}
+	config, err := NewConfig()
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	config := NewConfig()
 	cli, err := client.NewClientWithOpts(client.WithVersion(apiVersion))
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	defer cli.Close()
 
@@ -70,11 +87,15 @@ L:
 		case msg := <-msgChan:
 			switch msg.Status {
 			case Start:
-				log.Println(msg)
-				m := makeStartMessage(&msg)
+				m, err := makeStartMessage(&msg)
+				if err != nil {
+					log.Println(err)
+					continue
+				}
 				go m.Send(config)
 			case Die:
-				log.Println(msg)
+
+				// Collect logs
 				reader, err := cli.ContainerLogs(ctx, msg.ID, types.ContainerLogsOptions{
 					Since:      "30s",
 					ShowStdout: true,
@@ -87,6 +108,7 @@ L:
 				m, err := makeDieMessage(&msg, reader)
 				if err != nil {
 					log.Println(err)
+					continue
 				}
 				go m.Send(config)
 			}
@@ -97,34 +119,46 @@ L:
 	return
 }
 
-func makeStartMessage(msg *events.Message) (m *Message) {
+func makeStartMessage(msg *events.Message) (m *Message, err error) {
+	name, ok := msg.Actor.Attributes["name"]
+	if !ok {
+		return nil, errors.New("No name")
+	}
 	m = &Message{
 		Attachments: []Attachment{
 			Attachment{
-				Title: fmt.Sprintf("Container %s started", msg.From),
-				Color: "#9ccc65",
+				Title: fmt.Sprintf("Container started. name => %s image => %s", name, msg.From),
+				Color: StartColor,
 				TS:    msg.Time,
 			},
 		},
 	}
-	return m
+	return
 }
 
 func makeDieMessage(msg *events.Message, logReder io.Reader) (m *Message, err error) {
+	exitCode, ok := msg.Actor.Attributes["exitCode"]
+	if !ok {
+		return nil, errors.New("No exitCode")
+	}
+	name, ok := msg.Actor.Attributes["name"]
+	if !ok {
+		return nil, errors.New("No name")
+	}
 	m = &Message{
 		Attachments: []Attachment{
 			Attachment{
-				Title: fmt.Sprintf("Container %s died", msg.From),
-				Color: "#c62828",
+				Title: fmt.Sprintf("Container died. name => %s image => %s status code => %s", name, msg.From, exitCode),
+				Color: DieColor,
 				TS:    msg.Time,
 			},
 		},
 	}
 	b, err := ioutil.ReadAll(logReder)
 	if err != nil {
-		return
+		return nil, err
 	}
-	m.Attachments[0].Text = string(b)
+	m.Attachments[0].Text = "```" + string(b) + "```"
 
 	return
 }
@@ -182,6 +216,9 @@ func (m *Message) Send(config *Config) {
 
 func (m *Message) post(u string, body []byte) (err error) {
 	resp, err := http.Post(u, "application/json", bytes.NewBuffer(body))
+	if err != nil {
+		return err
+	}
 	defer resp.Body.Close()
 	return
 }
