@@ -7,3 +7,4 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     env_file:
       - docker-notify.env
+    restart: always
