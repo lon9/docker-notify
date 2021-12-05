@@ -122,11 +122,11 @@ L:
 func makeStartMessage(msg *events.Message) (m *Message, err error) {
 	name, ok := msg.Actor.Attributes["name"]
 	if !ok {
-		return nil, errors.New("No name")
+		return nil, errors.New("no name")
 	}
 	m = &Message{
 		Attachments: []Attachment{
-			Attachment{
+			{
 				Title: fmt.Sprintf("Container started. name => %s image => %s", name, msg.From),
 				Color: StartColor,
 				TS:    msg.Time,
@@ -139,15 +139,15 @@ func makeStartMessage(msg *events.Message) (m *Message, err error) {
 func makeDieMessage(msg *events.Message, logReder io.Reader) (m *Message, err error) {
 	exitCode, ok := msg.Actor.Attributes["exitCode"]
 	if !ok {
-		return nil, errors.New("No exitCode")
+		return nil, errors.New("no exitCode")
 	}
 	name, ok := msg.Actor.Attributes["name"]
 	if !ok {
-		return nil, errors.New("No name")
+		return nil, errors.New("no name")
 	}
 	m = &Message{
 		Attachments: []Attachment{
-			Attachment{
+			{
 				Title: fmt.Sprintf("Container died. name => %s image => %s status code => %s", name, msg.From, exitCode),
 				Color: DieColor,
 				TS:    msg.Time,
@@ -172,7 +172,7 @@ type Field struct {
 
 // Attachment is attachment of Message
 type Attachment struct {
-	Fallback   string  `json"fallback"`
+	Fallback   string  `json:"fallback"`
 	Pretext    string  `json:"pretext"`
 	Color      string  `json:"color"`
 	Title      string  `json:"title"`
